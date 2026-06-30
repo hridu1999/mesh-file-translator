@@ -1,8 +1,8 @@
-# Mesh File Translator (C++)
+# Mesh File Translator (C)
 
 ## Overview
 
-This project implements a mesh file translator in C++ that converts mesh data between different file formats. The goal is to provide a lightweight and efficient tool for reading mesh files, processing their structure, and exporting them into a standardized or alternative format.
+This project implements a mesh file translator in C that converts mesh data between different file formats. The goal is to provide a lightweight and efficient tool for reading mesh files, processing their structure, and exporting them into a standardized or alternative format.
 
 The translator is designed for use in computational geometry, simulations, and preprocessing pipelines where mesh interoperability is required.
 
@@ -24,9 +24,9 @@ The translator is designed for use in computational geometry, simulations, and p
 mesh-file-translator/
 │
 ├── src/
-│   ├── main.cpp
-│   ├── parser.cpp
-│   ├── writer.cpp
+│   ├── main.c
+│   ├── parser.c
+│   ├── writer.c
 │
 ├── include/
 │   ├── parser.h
