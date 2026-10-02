@@ -1,9 +1,16 @@
+/* data format translator script */
+/* all rights reserved to Dr. Ron Barron, MAME*/
+
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
-#define MAXN 20000
-#define EPS 1e-6
+#define MAX_NODES 20000
+#define POSITION_TOLERANCE 1e-6
+#define K_NEIGHBORS 8
+#define DEBUG 1
 
 typedef struct {
     int node_number;
@@ -15,14 +22,14 @@ typedef struct {
     int W, E, S, N;
 } Conn;
 
-// ===================== KD-TREE =====================
+// KD-TREE Build
 typedef struct KDNode {
     Node point;
     struct KDNode *left, *right;
     int axis;
 } KDNode;
 
-double dist2(Node a, Node b) {
+double squared_distance(Node a, Node b) {
     double dx = a.x - b.x;
     double dy = a.y - b.y;
     return dx*dx + dy*dy;
@@ -79,7 +86,6 @@ KDNode* build_kdtree(Node arr[], int l, int r, int depth) {
     return node;
 }
 
-#define KSEARCH 8
 
 typedef struct {
     double dist;
@@ -88,7 +94,7 @@ typedef struct {
 
 void update_best(Neighbor best[], int *size, Node candidate, double dist) {
 
-    if (*size < KSEARCH) {
+    if (*size < K_NEIGHBORS) {
         best[*size].dist = dist;
         best[*size].node = candidate;
         (*size)++;
@@ -96,7 +102,7 @@ void update_best(Neighbor best[], int *size, Node candidate, double dist) {
     }
 
     int max_idx = 0;
-    for (int i = 1; i < KSEARCH; i++)
+    for (int i = 1; i < K_NEIGHBORS; i++)
         if (best[i].dist > best[max_idx].dist)
             max_idx = i;
 
@@ -109,12 +115,11 @@ void update_best(Neighbor best[], int *size, Node candidate, double dist) {
 void knn_search(KDNode* root, Node target, Neighbor best[], int *size) {
     if (!root) return;
 
-    double d = dist2(root->point, target);
+    double d = squared_distance(root->point, target);
     update_best(best, size, root->point, d);
 
     int axis = root->axis;
-    double diff = (axis == 0) ? target.x - root->point.x
-                             : target.y - root->point.y;
+    double diff = (axis == 0) ? target.x - root->point.x : target.y - root->point.y;
 
     KDNode *near = (diff < 0) ? root->left : root->right;
     KDNode *far  = (diff < 0) ? root->right : root->left;
@@ -126,13 +131,13 @@ void knn_search(KDNode* root, Node target, Neighbor best[], int *size) {
         if (best[i].dist > maxDist)
             maxDist = best[i].dist;
 
-    if (*size < KSEARCH || diff*diff < maxDist)
+    if (*size < K_NEIGHBORS || diff*diff < maxDist)
         knn_search(far, target, best, size);
 }
 
-Conn conn[MAXN];
-Node nodes[MAXN];
-Node sorted[MAXN];
+Conn conn[MAX_NODES];
+Node nodes[MAX_NODES];
+Node sorted[MAX_NODES];
 
 int totalNodes;
 
@@ -142,7 +147,7 @@ int compare_x(const void *a, const void *b) {
     Node *n1 = (Node *)a;
     Node *n2 = (Node *)b;
 
-    if (fabs(n1->x - n2->x) > EPS)
+    if (fabs(n1->x - n2->x) > POSITION_TOLERANCE)
         return (n1->x < n2->x) ? -1 : 1;
 
     return 0;
@@ -152,7 +157,7 @@ int compare_y(const void *a, const void *b) {
     Node *n1 = (Node *)a;
     Node *n2 = (Node *)b;
 
-    if (fabs(n1->y - n2->y) > EPS)
+    if (fabs(n1->y - n2->y) > POSITION_TOLERANCE)
         return (n1->y < n2->y) ? -1 : 1;
 
     return 0;
@@ -175,11 +180,12 @@ void column_sort() {
         int count = 0;
 
         while (i < totalNodes &&
-               fabs(nodes[i].x - current_x) < EPS) {
+            fabs(nodes[i].x - current_x) < POSITION_TOLERANCE) {
 
             column[count++] = nodes[i];
             i++;
         }
+
 
         qsort(column, count, sizeof(Node), compare_y);
 
@@ -198,7 +204,7 @@ void column_sort() {
 
 void compute_connectivity() {
 
-    Node temp[MAXN];
+    Node temp[MAX_NODES];
     for (int i = 0; i < totalNodes; i++)
         temp[i] = nodes[i];
 
@@ -208,7 +214,7 @@ void compute_connectivity() {
 
         Node current = nodes[i];
 
-        Neighbor best[KSEARCH];
+        Neighbor best[K_NEIGHBORS];
         int size = 0;
 
         knn_search(root, current, best, &size);
@@ -254,13 +260,13 @@ void compute_connectivity() {
     }
 }
 
-// ===================== MAIN =====================
-int main() {
+int read_nodes_from_mesh(const char *filename) {
 
-    FILE *file = fopen("rectangle3.msh", "r");
-    if (!file) {
-        printf("Cannot open file\n");
-        return 1;
+    FILE *file = fopen(filename, "r");
+
+    if (file == NULL) {
+        printf("Cannot open mesh file: %s\n", filename);
+        return 0;
     }
 
     char line[256];
@@ -272,8 +278,7 @@ int main() {
         if (strncmp(line, "$Nodes", 6) == 0) {
 
             fgets(line, sizeof(line), file);
-            sscanf(line, "%d %d %d %d",
-                   &numBlocks, &totalNodes, &minTag, &maxTag);
+            sscanf(line, "%d %d %d %d", &numBlocks, &totalNodes, &minTag, &maxTag);
 
             int idx = 0;
 
@@ -282,9 +287,7 @@ int main() {
                 int entityDim, entityTag, parametric, numNodesInBlock;
 
                 fgets(line, sizeof(line), file);
-                sscanf(line, "%d %d %d %d",
-                       &entityDim, &entityTag,
-                       &parametric, &numNodesInBlock);
+                sscanf(line, "%d %d %d %d", &entityDim, &entityTag, &parametric, &numNodesInBlock);
 
                 // skip IDs
                 for (int i = 0; i < numNodesInBlock; i++)
@@ -312,45 +315,89 @@ int main() {
 
     fclose(file);
 
-    printf("Nodes read: %d\n", totalNodes);
+    return 1;
+}
+
+int output() {
+    FILE *node_out = fopen("nodes0.dat", "w");
+
+    if (node_out == NULL) {
+        printf("Cannot open nodes0.dat for writing.\n");
+        return 0;
+    }
+    fprintf(node_out, "%d\n", totalNodes);
+
+    for (int i = 0; i < totalNodes; i++) {
+        fprintf(node_out, "%-6d %-12.4f %-12.4f %-2d\n",
+                nodes[i].node_number,
+                nodes[i].x,
+                nodes[i].y,
+                nodes[i].node_id);
+    }
+
+    fclose(node_out);
+
+    FILE *conn_out = fopen("connectivity0.dat", "w");
+
+    if (conn_out == NULL) {
+        printf("Cannot open connectivity0.dat for writing.\n");
+        return 0;
+    }
+
+    fprintf(conn_out, "\n");
+    fprintf(conn_out, "node  w     e     n     s\n");
+
+    for (int i = 0; i < totalNodes; i++) {
+        fprintf(conn_out, "%-6d %-5d %-5d %-5d %-5d\n",
+                nodes[i].node_number,
+                conn[i].W,
+                conn[i].E,
+                conn[i].N,
+                conn[i].S);
+    }
+
+    fclose(conn_out);
+    return 1;
+}
+
+/**
+ * Main function to read mesh, sort nodes, compute connectivity, and output results.
+ */
+int main(void) {
+
+    printf("[DEBUG] Program started.\n");
+    printf("[DEBUG] MAX_NODES=%d, K_NEIGHBORS=%d.\n",
+                MAX_NODES, K_NEIGHBORS);
+
+    if (!read_nodes_from_mesh("circular2.msh")) {
+    return EXIT_FAILURE;
+    }
+
 
     // -------- SORT --------
+    printf("[DEBUG] Beginning sorting.\n");
     column_sort();
+    printf("[DEBUG] Sorting finished.\n");
+
 
     // -------- CONNECTIVITY --------
+    printf("[DEBUG] Beginning connectivity calculation.\n");
     compute_connectivity();
-
-    // -------- WRITE NODE FILE --------
-FILE *node_out = fopen("nodes_sorted.dat", "w");
-
-fprintf(node_out, "node_number   x   y   node_id\n");
-
-for (int i = 0; i < totalNodes; i++) {
-    fprintf(node_out, "%-6d %-12.6f %-12.6f %-2d\n",
-            nodes[i].node_number,
-            nodes[i].x,
-            nodes[i].y,
-            nodes[i].node_id);
-}
-
-fclose(node_out);
+    if (!output()) {
+        return EXIT_FAILURE;
+    }
+    printf("[DEBUG] Connectivity calculation finished.\n");
 
 
-// -------- WRITE CONNECTIVITY FILE --------
-FILE *conn_out = fopen("connectivity.dat", "w");
+    printf("[DEBUG] Beginning output.\n");
 
-fprintf(conn_out, "\n");
-fprintf(conn_out, "node  W     E     N     S\n");
-fprintf(conn_out, "-----------------------------\n");
-for (int i = 0; i < totalNodes; i++) {
-    fprintf(conn_out, "%-6d %-5d %-5d %-5d %-5d\n",
-            nodes[i].node_number,
-            conn[i].W,
-            conn[i].E,
-            conn[i].N,
-            conn[i].S);
-}
+    output();
 
-fclose(conn_out);
+    printf("[DEBUG] Output generation succeeded.\n");
+    printf("[DEBUG] Program completed successfully.\n");
+
+
+    return EXIT_SUCCESS;
+
 
 }
