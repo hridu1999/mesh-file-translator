@@ -1,120 +1,151 @@
-# Mesh File Translator (C)
+# Mesh File Translator
 
-## Overview
+A lightweight C program that reads a two-dimensional Gmsh mesh and
+converts its node and boundary information into files for a
+Cartesian-grid or PDE-solver workflow.
 
-This project implements a mesh file translator in C that converts mesh data between different file formats. The goal is to provide a lightweight and efficient tool for reading mesh files, processing their structure, and exporting them into a standardized or alternative format.
-
-The translator is designed for use in computational geometry, simulations, and preprocessing pipelines where mesh interoperability is required.
-
----
+The translator preserves the original Gmsh node tags while sorting and
+renumbering nodes. It uses the original tags to match line elements
+to their endpoints, then writes connectivity using the new node numbers.
 
 ## Features
 
-* Read mesh data from input files
-* Convert mesh structure into a unified internal representation
-* Export mesh into a different output format
-* Modular design for adding new file format parsers
-* Lightweight and efficient C++ implementation
+- Reads node coordinates and elements from Gmsh 4.1 ASCII mesh files.
+- Sorts nodes by x-coordinate and then by y-coordinate within each
+  column.
+- Assigns new node numbers after sorting.
+- Maps original Gmsh node tags to the new node numbers.
+- Calculates west, east, north, and south neighbors using a KD-tree
+  nearest-neighbor search.
+- Reads first-order line elements to construct boundary connectivity.
+- Traces separate closed boundary loops and writes their connectivity
+  in counterclockwise order.
+- Identifies boundary and interior nodes in the output.
 
----
+## Input
 
-## Project Structure
+The program reads a **Gmsh 4.1 ASCII `.msh` file** containing:
 
-```text
-mesh-file-translator/
-│
-├── src/
-│   ├── main.c
-│   ├── parser.c
-│   ├── writer.c
-│
-├── include/
-│   ├── parser.h
-│   ├── writer.h
-│
-├── input/
-│   └── sample.mesh
-│
-├── output/
-│   └── converted.mesh
-│
-├── mesh-file-translator.sln
-└── README.md
+- A `$Nodes` section with node tags and coordinates.
+- An `$Elements` section with first-order, two-node line elements
+  defining the boundaries.
+
+The current version uses the x- and y-coordinates of the mesh.
+
+Set the mesh filename in `main()`:
+
+```c
+const char *mesh_filename = "circular3.msh";
 ```
 
----
+Place the input file in the program's working directory, or specify
+its path.
+
+## Output Files
+
+### `nodes0.dat`
+
+Contains the total number of nodes followed by their new node numbers,
+coordinates, and output labels.
+
+```text
+4
+1      0.0000       0.0000       3
+2      0.0000       1.0000       3
+3      1.0000       0.0000       3
+4      1.0000       1.0000       3
+```
+
+| Label | Meaning |
+|------:|---------|
+| `3` | Boundary node, including corner nodes |
+| `1` | Interior node |
+
+### `connectivity0.dat`
+
+Contains directional neighbors for each node:
+
+```text
+node   w     e     n     s
+1      0     3     2     0
+2      0     4     0     1
+3      1     0     4     0
+4      2     0     0     3
+```
+
+A value of `0` means that no neighbor was selected in that direction.
+
+Directional neighbors are selected from a KD-tree nearest-neighbor
+search. They should be checked for suitability for the mesh and solver,
+especially near boundaries or on irregular meshes.
+
+### `bndry_connectivity0.dat`
+
+Contains the previous and next boundary nodes for each boundary node:
+
+```text
+curr   prev   next
+1      2      3
+3      1      4
+4      3      2
+2      4      1
+```
+
+The `next` column follows each boundary loop counterclockwise in the
+x-y plane. Separate closed loops are traced independently.
 
 ## How It Works
 
-1. The program reads an input mesh file.
-2. The mesh is parsed into a structured format (nodes, elements, connectivity).
-3. Data is processed or transformed if needed.
-4. The mesh is written to a new file format.
+1. Read nodes and preserve their original Gmsh node tags.
+2. Sort nodes and assign new node numbers.
+3. Read line elements from the `$Elements` section.
+4. Match each line element's endpoint tags to the sorted nodes.
+5. Trace each closed boundary loop and determine its orientation.
+6. Calculate directional neighbors using a KD-tree.
+7. Write the output files using the new node numbers.
 
----
-
-## Supported Concepts
-
-* Vertex coordinates (x, y, z)
-* Element connectivity (triangles, quads, etc.)
-* Basic mesh topology handling
-
----
+The original Gmsh tag stays with each node during sorting. This allows
+the program to find the correct boundary connections even though the
+output node numbers have changed.
 
 ## Build and Run
 
-### Using Visual Studio
+### Visual Studio
 
-1. Open `mesh-file-translator.sln`
-2. Select build configuration (Debug/Release)
-3. Build (`Ctrl + Shift + B`)
-4. Run (`Ctrl + F5`)
+1. Open `mesh-file-translator.sln`.
+2. Select the desired build configuration.
+3. Update the mesh filename in `main()`.
+4. Build the project with **Ctrl + Shift + B**.
+5. Run it with **Ctrl + F5**.
 
----
+The input mesh must be accessible from the program's working directory.
+The output files are written to that directory.
 
-## Usage
+## Current Limitations
 
-Example (conceptual):
-
-```
-translator.exe input.mesh output.msh
-```
-
-* `input.mesh` → source file
-* `output.msh` → converted file
-
----
-
-## Applications
-
-* Preprocessing mesh data for simulations
-* Converting between FEM/CFD formats
-* Interoperability between different tools
-* Research in computational geometry
-
----
+- Input is limited to Gmsh 4.1 ASCII meshes.
+- Boundary extraction supports first-order, two-node line elements.
+- Line elements are expected to form separate, non-branching closed loops.
+- All 1D line elements are treated as boundary edges; internal curves
+  and branching interfaces require additional handling.
+- Every loop is oriented counterclockwise, including holes. A PDE solver
+  that requires domain-oriented boundaries or outward normals may need
+  holes oriented differently.
+- Directional connectivity is based on nearby-node selection rather
+  than mesh-element adjacency.
+- Physical groups and boundary-condition labels are not yet exported.
 
 ## Future Improvements
 
-* Support for more mesh formats (.msh, .vtk, .obj, etc.)
-* Error handling and validation
-* Performance optimization for large meshes
-* Visualization support
-* Integration with libraries like meshio
+- Read Gmsh physical groups to identify inlets, outlets, and walls.
+- Export boundary edges with curve and physical-group tags.
+- Support higher-order line elements and internal interfaces.
+- Improve directional connectivity for irregular meshes.
+- Add validation and visualization tools.
+- Support additional mesh formats.
 
----
+## Technologies
 
-## Technologies Used
-
-* C++
-* Visual Studio
-* Standard Template Library (STL)
-
----
-
-
----
-
-## License
-
-This project is open-source and intended for educational and research use.
+- C
+- Visual Studio
+- C standard library
