@@ -110,13 +110,12 @@ output node numbers have changed.
 
 ## Build and Run
 
-### Visual Studio
+### Visual Studio Code
 
-1. Open `mesh-file-translator.sln`.
-2. Select the desired build configuration.
-3. Update the mesh filename in `main()`.
-4. Build the project with **Ctrl + Shift + B**.
-5. Run it with **Ctrl + F5**.
+1. Open the project folder in Visual Studio Code.
+2. Update the mesh filename in `main()`.
+3. Build the C source files using your configured C compiler.
+4. Run the compiled executable from the terminal.
 
 The input mesh must be accessible from the program's working directory.
 The output files are written to that directory.
@@ -128,11 +127,6 @@ The output files are written to that directory.
 - Line elements are expected to form separate, non-branching closed loops.
 - All 1D line elements are treated as boundary edges; internal curves
   and branching interfaces require additional handling.
-- Every loop is oriented counterclockwise, including holes. A PDE solver
-  that requires domain-oriented boundaries or outward normals may need
-  holes oriented differently.
-- Directional connectivity is based on nearby-node selection rather
-  than mesh-element adjacency.
 - Physical groups and boundary-condition labels are not yet exported.
 
 ## Future Improvements
