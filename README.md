@@ -1,4 +1,4 @@
-# Mesh File Translator
+# Mesh File Translator (MeshFT)
 
 A lightweight C program that reads a two-dimensional Gmsh mesh and
 converts its node and boundary information into files for a
